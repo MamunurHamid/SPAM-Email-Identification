@@ -1,107 +1,101 @@
 import streamlit as st
+import base64
 import pickle
 import numpy as np
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.models import load_model
+from tensorflow.keras.initializers import Orthogonal, GlorotUniform
 import os
-import logging
+import tensorflow as tf
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Apply custom CSS
+def local_css(file_name):
+    with open(file_name) as f:
+        st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 
-# Define the main directory
-main_directory = 'FINAL_PROJECT'
+local_css("style.css")
 
-# Paths to the phishing URL model and tokenizer files
-phishing_model_path = os.path.join(main_directory, 'phishing_url', 'phishing_model.h5')
-phishing_tokenizer_path = os.path.join(main_directory, 'phishing_url', 'phishing_tokenizer.pkl')
+# Title and description
+st.title("Spam Email Detector")
+st.markdown("### A Streamlit App with a Cyber Security Theme")
 
-# Paths to the spam email model and tokenizer files
-spam_model_path = os.path.join(main_directory, 'spam_email', 'my_model.h5')
-spam_tokenizer_path = os.path.join(main_directory, 'spam_email', 'tokenizer.pkl')
+# Load a cyber security image
+def load_image(file_name):
+    with open(file_name, "rb") as image_file:
+        encoded_string = base64.b64encode(image_file.read()).decode()
+    return encoded_string
 
-# Load the phishing URL model and tokenizer
-if not os.path.exists(phishing_model_path):
-    st.error(f"Phishing URL model file not found at {phishing_model_path}")
-else:
-    logging.info(f"Loading phishing URL model from {phishing_model_path}")
+cyber_image = load_image("security.jpg")
+st.markdown(f'<img src="data:image/jpg;base64,{cyber_image}" alt="Cyber Security" width="700">', unsafe_allow_html=True)
 
-if not os.path.exists(phishing_tokenizer_path):
-    st.error(f"Phishing URL tokenizer file not found at {phishing_tokenizer_path}")
-else:
-    logging.info(f"Loading phishing URL tokenizer from {phishing_tokenizer_path}")
+# Check TensorFlow version
+st.write(f"TensorFlow version: {tf.__version__}")
 
-phishing_model = load_model(phishing_model_path)
-with open(phishing_tokenizer_path, 'rb') as handle:
-    phishing_tokenizer = pickle.load(handle)
+# Paths to the model and tokenizer files
+model_path = 'my_model.h5'
+tokenizer_path = 'tokenizer.pkl'
 
-# Load the spam email model and tokenizer
-if not os.path.exists(spam_model_path):
-    st.error(f"Spam email model file not found at {spam_model_path}")
-else:
-    logging.info(f"Loading spam email model from {spam_model_path}")
+# Check if the files exist
+if not os.path.exists(model_path):
+    st.error(f"Model file not found at {model_path}")
+if not os.path.exists(tokenizer_path):
+    st.error(f"Tokenizer file not found at {tokenizer_path}")
 
-if not os.path.exists(spam_tokenizer_path):
-    st.error(f"Spam email tokenizer file not found at {spam_tokenizer_path}")
-else:
-    logging.info(f"Loading spam email tokenizer from {spam_tokenizer_path}")
+# Load the model with custom objects
+custom_objects = {
+    'Orthogonal': Orthogonal(),
+    'GlorotUniform': GlorotUniform()
+}
 
-spam_model = load_model(spam_model_path)
-with open(spam_tokenizer_path, 'rb') as handle:
-    spam_tokenizer = pickle.load(handle)
+try:
+    model = load_model(model_path, custom_objects=custom_objects)
+except ValueError as e:
+    st.error(f"Error loading model: {e}")
+    st.stop()
 
-# Function to preprocess the input text for phishing URL model
-def preprocess_text_url(text, tokenizer, max_len):
+# Load the tokenizer
+try:
+    with open(tokenizer_path, 'rb') as handle:
+        tokenizer = pickle.load(handle)
+except FileNotFoundError:
+    st.error(f"Tokenizer file not found at {tokenizer_path}")
+    st.stop()
+except pickle.UnpicklingError as e:
+    st.error(f"Error loading tokenizer: {e}")
+    st.stop()
+
+# Function to preprocess the input text
+def preprocess_text(text, tokenizer, max_len):
     text = text.lower()
     sequences = tokenizer.texts_to_sequences([text])
     padded_sequences = pad_sequences(sequences, maxlen=max_len, padding='post')
     return padded_sequences
 
-# Function to preprocess the input text for spam email model
-def preprocess_text_email(text, tokenizer, max_len):
-    text = text.lower()
-    sequences = tokenizer.texts_to_sequences([text])
-    padded_sequences = pad_sequences(sequences, maxlen=max_len, padding='post')
-    return padded_sequences
+# Streamlit app
+st.title("Spam Email Detection")
 
-# Streamlit app title
-st.title('Spam and Phishing Detection')
-
-# Tabs for different functionalities
-tab1, tab2 = st.tabs(["Phishing URL Detection", "Spam Email Detection"])
-
-with tab1:
-    st.header("Phishing URL Detection")
-    url_input = st.text_area("Enter the URL to check:")
-    if st.button("Check URL"):
-        if url_input:
-            # Preprocess the input URL content with the correct max_len
-            processed_input = preprocess_text_url(url_input, phishing_tokenizer, max_len=177)
-            # Predict
-            prediction = phishing_model.predict(processed_input)
-            is_phishing = (prediction > 0.5).astype("int32")[0][0]
-            
-            if is_phishing:
-                st.error("Warning: This URL is likely a phishing attempt!")
-            else:
-                st.success("This URL seems to be safe.")
-        else:
-            st.error("Please enter a URL to check.")
-
-with tab2:
-    st.header("Spam Email Detection")
-    email_input = st.text_area("Enter the email content:")
-    if st.button("Check Email"):
-        if email_input:
-            # Preprocess the input email content with the correct max_len
-            processed_input = preprocess_text_email(email_input, spam_tokenizer, max_len=500)  # Use max_len=500
-            # Predict
-            prediction = spam_model.predict(processed_input)
+email_input = st.text_area("Enter the email content:")
+if st.button("Check Email"):
+    if email_input:
+        # Preprocess the input email content with the correct max_len
+        processed_input = preprocess_text(email_input, tokenizer, max_len=500)  # Use max_len=500
+        # Predict
+        try:
+            prediction = model.predict(processed_input)
             is_spam = (prediction > 0.5).astype("int32")[0][0]
-            
+
             if is_spam:
                 st.error("Warning: This email is likely spam!")
             else:
                 st.success("This email seems to be safe.")
-        else:
-            st.error("Please enter email content to check.")
+        except Exception as e:
+            st.error(f"Error making prediction: {e}")
+    else:
+        st.error("Please enter email content to check.")
+
+# Sidebar content
+st.sidebar.title("About")
+st.sidebar.info("""
+    This is a spam email detection app.
+    Themed around Cyber Security.
+""")
